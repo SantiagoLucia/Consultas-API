@@ -1,0 +1,48 @@
+from core.db import pool
+
+def get_tareas_usuario(usuario):
+
+    q = """SELECT * FROM (SELECT TASK.DBID_, TASK.NAME_ AS TAREA,
+DECODE(TASK.STATE_,'open','pendiente') AS ESTADO,
+TASK.ASSIGNEE_ AS USUARIO_ASIGNADO,
+TO_CHAR(TASK.CREATE_,'DD/MM/YYYY') AS FECHA_CREACION,
+(SELECT VAR.STRING_VALUE_ FROM GEDO_GED.JBPM4_VARIABLE VAR WHERE VAR.KEY_ = 'acronimoTipoDocumento' 
+AND VAR.EXECUTION_ = TASK.EXECUTION_)  AS ACRONIMO,
+(SELECT VAR.STRING_VALUE_ FROM GEDO_GED.JBPM4_VARIABLE VAR WHERE VAR.KEY_ = 'motivo'
+AND VAR.EXECUTION_ = TASK.EXECUTION_) AS MOTIVO
+FROM GEDO_GED.JBPM4_TASK TASK WHERE TASK.ASSIGNEE_ IN (:usuario,:usuario||'.PF')
+ORDER BY TASK.CREATE_ DESC)"""
+    con = pool.acquire()
+    cur = con.cursor()
+    cur.execute(q, (usuario,))
+    datos = cur.fetchall()
+    columnas = [x[0] for x in cur.description]
+    resultado = [dict(zip(columnas, fila)) for fila in datos]
+    pool.release(con)
+    return resultado
+
+
+def get_gedos_firmados(anio, reparticion):
+
+    q = """SELECT 
+G.NUMERO NUMERO_GEDO,G.REPARTICION CODIGO_REPARTICION,
+SR.NOMBRE_REPARTICION NOMBRE_REPARTICION,SR1.CODIGO_REPARTICION CODIGO_MINISTERIO,
+SR1.NOMBRE_REPARTICION NOMBRE_MINISTERIO,G.ANIO AÑO, REPLACE(G.MOTIVO, CHR(10), ' ') MOTIVO,
+G.USUARIOGENERADOR USUARIO_GENERADOR,G.DATOS_USUARIO DATOS_USUARIO,
+G.FECHACREACION FECHA_CREACION,T.ACRONIMO TIPO_GEDO,
+T.NOMBRE NOMBRE_GEDO,G.SISTEMAORIGEN,G.SISTEMAINICIADOR,
+ROUND(G.PESO/1024/1024,2) PESO_MB
+FROM GEDO_GED.GEDO_DOCUMENTO G
+INNER JOIN GEDO_GED.GEDO_TIPODOCUMENTO T ON T.ID = G.TIPO
+INNER JOIN GEDO_GED.GEDO_TIPODOCUMENTO_FAMILIA F ON T.FAMILIA = F.ID 
+INNER JOIN TRACK_GED.SADE_REPARTICION SR ON G.REPARTICION = SR.CODIGO_REPARTICION  
+INNER JOIN TRACK_GED.SADE_REPARTICION SR1 ON SR.MINISTERIO = SR1.ID_REPARTICION
+WHERE G.ANIO = :ANIO AND G.REPARTICION = :REPA"""
+    con = pool.acquire()
+    cur = con.cursor()
+    cur.execute(q, (anio, reparticion,))
+    datos = cur.fetchall()
+    columnas = [x[0] for x in cur.description]
+    resultado = [dict(zip(columnas, fila)) for fila in datos]
+    pool.release(con)
+    return resultado
